@@ -72,9 +72,10 @@ async function main() {
   }
 
   // ---- Sample App: 약물 상호작용 체커 ----
+  const app1RunUrl = "/demo/drug-interaction-checker";
   const app1 = await prisma.appCanvas.upsert({
     where: { slug: "drug-interaction-checker" },
-    update: {},
+    update: { runUrl: app1RunUrl },
     create: {
       slug: "drug-interaction-checker",
       name: "약물 상호작용 체커",
@@ -82,7 +83,7 @@ async function main() {
       description:
         "환자의 복용 약물 리스트를 입력하면 임상 가이드라인에 기반한 상호작용 경고와 대체 약물 제안을 제공합니다. 20년 임상 간호 경력의 현장 지식이 반영된 프롬프트를 사용합니다.",
       domain: "AI + 간호학",
-      runUrl: "https://example-appcanvas.vercel.app/drug-checker",
+      runUrl: app1RunUrl,
       thumbnailUrl: null,
       status: AppStatus.SUBMITTED,
       createdById: learner.id,
@@ -108,32 +109,34 @@ async function main() {
   });
 
   // ---- Sample App 2: 세무 절세 계산기 (아직 DRAFT) ----
+  const taxRunUrl = "/demo/tax-saving-calc";
   await prisma.appCanvas.upsert({
     where: { slug: "tax-saving-calc" },
-    update: {},
+    update: { runUrl: taxRunUrl },
     create: {
       slug: "tax-saving-calc",
       name: "종합소득세 절세 계산기",
       oneLiner: "자영업자가 경비·공제 항목을 입력하면 예상 세액과 절세 포인트를 알려주는 도구",
       description: "20년 세무 경력 기반 프롬프트로 업종별 평균 경비율, 절세 체크리스트를 제시합니다.",
       domain: "AI + 세무",
-      runUrl: "https://example-appcanvas.vercel.app/tax-saver",
+      runUrl: taxRunUrl,
       status: AppStatus.DRAFT,
       createdById: learner2.id,
     },
   });
 
   // ---- Pre-approved sample: 다른 간호 앱 + 인증서 (for demo) ----
+  const app2RunUrl = "/demo/nurse-handover-summarizer";
   const app2 = await prisma.appCanvas.upsert({
     where: { slug: "nurse-handover-summarizer" },
-    update: {},
+    update: { runUrl: app2RunUrl },
     create: {
       slug: "nurse-handover-summarizer",
       name: "간호 인계 요약기",
       oneLiner: "교대 시 환자 노트를 SBAR 포맷 3문단으로 자동 정리",
       description: "간호 기록 원문을 입력하면 Situation-Background-Assessment-Recommendation 포맷으로 요약합니다.",
       domain: "AI + 간호학",
-      runUrl: "https://example-appcanvas.vercel.app/handover",
+      runUrl: app2RunUrl,
       status: AppStatus.APPROVED,
       canvasSeed: true,
       createdById: learner.id,
