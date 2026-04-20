@@ -1,0 +1,172 @@
+// MindCanvas AI+X Certification Platform – data model
+// Reflects: 5-level certification, Lv.2 Creator 9-item checklist,
+// "Living Certificate" with AppCanvas link, team role per person.
+//
+// SQLite driver doesn't support Prisma enums; we use string columns
+// with app-level enum typing (see lib/cert.ts).
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// ---- People ----
+model User {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  name      String
+  role      String   @default("LEARNER") // LEARNER | REVIEWER | DOMAIN_EXPERT | ADMIN
+  domain    String?
+  createdAt DateTime @default(now())
+
+  enrollments     Enrollment[]
+  submissions     Submission[]           @relation("LearnerSubmissions")
+  reviewsAsRev1   Review[]               @relation("Reviewer1")
+  reviewsAsRev2   Review[]               @relation("Reviewer2")
+  certificates    Certificate[]
+  teamMemberships SubmissionTeamMember[]
+  authoredApps    AppCanvas[]            @relation("AppCreator")
+}
+
+// ---- Curriculum ----
+model Course {
+  id           String   @id @default(cuid())
+  code         String   @unique
+  name         String
+  durationDays Int
+  targetLevel  String   // LV0..LV4
+  description  String?
+  enrollments  Enrollment[]
+}
+
+model Enrollment {
+  id            String    @id @default(cuid())
+  userId        String
+  courseId      String
+  cohort        String
+  completedAt   DateTime?
+  achievedLevel String?
+  createdAt     DateTime  @default(now())
+
+  user   User   @relation(fields: [userId], references: [id])
+  course Course @relation(fields: [courseId], references: [id])
+
+  @@unique([userId, courseId, cohort])
+}
+
+// ---- App Canvas ----
+model AppCanvas {
+  id           String   @id @default(cuid())
+  slug         String   @unique
+  name         String
+  oneLiner     String
+  description  String
+  domain       String
+  runUrl       String
+  sourceUrl    String?
+  thumbnailUrl String?
+  status       String   @default("DRAFT")
+  // DRAFT | SUBMITTED | UNDER_REVIEW | APPROVED | CONDITIONAL | REJECTED | PUBLISHED
+  canvasSeed   Boolean  @default(false)
+  createdById  String
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  createdBy    User          @relation("AppCreator", fields: [createdById], references: [id])
+  submissions  Submission[]
+  usage        AppUsage[]
+  certificates Certificate[] @relation("CertApp")
+}
+
+// ---- Submission & Review ----
+model Submission {
+  id            String   @id @default(cuid())
+  appId         String
+  leadLearnerId String
+  cohort        String
+  teamName      String?
+  submittedAt   DateTime @default(now())
+  status        String   @default("SUBMITTED")
+
+  app         AppCanvas              @relation(fields: [appId], references: [id])
+  leadLearner User                   @relation("LearnerSubmissions", fields: [leadLearnerId], references: [id])
+  teamMembers SubmissionTeamMember[]
+  review      Review?
+}
+
+model SubmissionTeamMember {
+  id           String @id @default(cuid())
+  submissionId String
+  userId       String
+  role         String
+
+  submission Submission @relation(fields: [submissionId], references: [id], onDelete: Cascade)
+  user       User       @relation(fields: [userId], references: [id])
+
+  @@unique([submissionId, userId])
+}
+
+// 9-item checklist — 3 areas × 3 items. Each verdict: PENDING | PASS | REVISE | FAIL
+model Review {
+  id           String    @id @default(cuid())
+  submissionId String    @unique
+  reviewer1Id  String
+  reviewer2Id  String?
+  startedAt    DateTime  @default(now())
+  completedAt  DateTime?
+
+  item_1_1 String @default("PENDING") // 앱 실행
+  item_1_2 String @default("PENDING") // 핵심 플로우
+  item_1_3 String @default("PENDING") // 에러 처리
+  item_2_1 String @default("PENDING") // 문제 정의
+  item_2_2 String @default("PENDING") // 도메인 전문성
+  item_2_3 String @default("PENDING") // 실용성
+  item_3_1 String @default("PENDING") // 첫 사용
+  item_3_2 String @default("PENDING") // 인터페이스
+  item_3_3 String @default("PENDING") // 결과 품질
+
+  strengths          String?
+  improvements       String?
+  registrationAdvice String  @default("IMMEDIATE")
+  // IMMEDIATE | UI_POLISH_FIRST | NEEDS_DEVELOPMENT
+  overall            String  @default("PENDING")
+  // PENDING | PASS | CONDITIONAL | FAIL
+
+  submission Submission @relation(fields: [submissionId], references: [id])
+  reviewer1  User       @relation("Reviewer1", fields: [reviewer1Id], references: [id])
+  reviewer2  User?      @relation("Reviewer2", fields: [reviewer2Id], references: [id])
+}
+
+// ---- Living Certificate ----
+model Certificate {
+  id          String    @id @default(cuid())
+  certNumber  String    @unique
+  level       String
+  recipientId String
+  appId       String?
+  domain      String
+  teamName    String?
+  teamRole    String?
+  issuedAt    DateTime  @default(now())
+  revokedAt   DateTime?
+  publicSlug  String    @unique
+
+  recipient User       @relation(fields: [recipientId], references: [id])
+  app       AppCanvas? @relation("CertApp", fields: [appId], references: [id])
+}
+
+// ---- Usage telemetry (for QWUS) ----
+model AppUsage {
+  id         String   @id @default(cuid())
+  appId      String
+  sessionAt  DateTime @default(now())
+  durationMs Int      @default(0)
+  completed  Boolean  @default(false)
+  rating     Int?
+
+  app AppCanvas @relation(fields: [appId], references: [id])
+}
