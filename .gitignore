@@ -3,7 +3,9 @@ node_modules/
 out/
 build/
 dist/
-.env
+# Local overrides only. The base .env is committed — it contains no secrets,
+# only the SQLite dev DB path. Put secrets in .env.local (ignored below).
+.env.local
 .env*.local
 *.log
 .DS_Store

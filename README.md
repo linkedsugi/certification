@@ -34,10 +34,15 @@ MindCanvas의 전략 문서(`docs/strategy/`)에 정의된 다음 개념을 그�
 
 ```bash
 npm install
-npx prisma db push       # SQLite 스키마 생성
-npm run db:seed          # 시드 데이터 삽입 (과정 4종, 샘플 사용자/앱/인증서)
-npm run dev              # http://localhost:3000
+npx prisma db push
+npm run db:seed
+npm run dev
 ```
+
+접속: http://localhost:3000
+
+> `.env`는 저장소에 포함되어 있습니다 (SQLite 로컬 경로만 담긴 비(非)비밀 파일).
+> 프로덕션 시크릿은 `.env.local`에 두세요 (gitignore 됨).
 
 로그인 페이지(`/login`)에서 다음 시드 계정 중 하나를 선택해 로그인:
 
