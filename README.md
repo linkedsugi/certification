@@ -85,6 +85,23 @@ Certificate
 
 ---
 
+## 배포 — Firebase App Hosting + Neon Postgres
+
+상세 가이드: [`docs/strategy/firebase-deployment.md`](docs/strategy/firebase-deployment.md)
+
+요약:
+
+1. **Neon Postgres** 프로젝트 생성 → connection string 복사
+2. 로컬 1회: `DATABASE_URL=<...> npm run db:seed:prod` 으로 스키마 + 시드를 Neon에 푸시
+3. **Firebase 프로젝트** 생성 (Blaze 플랜)
+4. `firebase init apphosting` → GitHub 리포 (`linkedsugi/certification`) 연결
+5. Firebase Console → App Hosting → Secrets에 `DATABASE_URL` 등록
+6. `main`에 푸시하면 자동 빌드·배포
+
+`apphosting.yaml`이 이미 포함되어 있어 별도 설정 파일 작성 불필요. 빌드 단계에서 `scripts/prepare-prod-schema.mjs`가 Prisma datasource를 sqlite → postgresql로 자동 전환합니다 (커밋된 schema.prisma는 sqlite로 유지되어 로컬 개발에 영향 없음).
+
+---
+
 ## 다음 단계 (로드맵)
 
 1. **실인증**: NextAuth + 이메일/SSO 교체

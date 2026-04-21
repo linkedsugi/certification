@@ -5,10 +5,12 @@
   "scripts": {
     "dev": "next dev",
     "build": "prisma generate && next build",
+    "build:firebase": "node scripts/prepare-prod-schema.mjs && prisma generate && prisma db push --skip-generate --accept-data-loss && next build",
     "start": "next start",
     "lint": "next lint",
     "db:push": "prisma db push",
     "db:seed": "tsx prisma/seed.ts",
+    "db:seed:prod": "node scripts/prepare-prod-schema.mjs && prisma generate && tsx prisma/seed.ts",
     "db:reset": "rm -f prisma/dev.db && prisma db push && npm run db:seed"
   },
   "dependencies": {
