@@ -1,7 +1,9 @@
 import { notFound } from "next/navigation";
+import { headers } from "next/headers";
 import Link from "next/link";
 import { prisma } from "@/lib/db";
 import { LEVEL_META, toCertLevel } from "@/lib/cert";
+import OpenBadgeSection from "@/components/OpenBadgeSection";
 import type { Metadata } from "next";
 
 export async function generateMetadata(
@@ -34,8 +36,12 @@ export default async function CertPage({ params }: { params: { slug: string } })
   });
 
   const verifyUrl = `/verify?cert=${encodeURIComponent(cert.certNumber)}`;
+  const h = headers();
+  const proto = h.get("x-forwarded-proto") ?? "http";
+  const host = h.get("x-forwarded-host") ?? h.get("host") ?? "localhost:3000";
+  const baseUrl = `${proto}://${host}`;
   const qrSrc = `https://api.qrserver.com/v1/create-qr-code/?size=140x140&data=${encodeURIComponent(
-    `https://mindcanvas.kr/cert/${cert.publicSlug}`,
+    `${baseUrl}/cert/${cert.publicSlug}`,
   )}`;
 
   return (
@@ -111,6 +117,15 @@ export default async function CertPage({ params }: { params: { slug: string } })
           인증번호 <span className="font-mono">{cert.certNumber}</span>로 확인 가능합니다.
         </p>
       </div>
+
+      <OpenBadgeSection
+        baseUrl={baseUrl}
+        certNumber={cert.certNumber}
+        level={toCertLevel(cert.level)}
+        recipientName={cert.recipient.name}
+        issuedAt={cert.issuedAt.toISOString()}
+        publicSlug={cert.publicSlug}
+      />
     </div>
   );
 }
