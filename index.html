@@ -1,0 +1,688 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8" />
+<title>3D Tetris</title>
+<style>
+  html, body {
+    margin: 0;
+    padding: 0;
+    height: 100%;
+    background: #0b0f1a;
+    color: #e8ecf4;
+    font-family: "Segoe UI", "Apple SD Gothic Neo", "Malgun Gothic", sans-serif;
+    overflow: hidden;
+  }
+  #game {
+    position: absolute;
+    inset: 0;
+  }
+  #hud {
+    position: absolute;
+    top: 16px;
+    left: 16px;
+    background: rgba(10, 14, 25, 0.72);
+    border: 1px solid #2a3350;
+    border-radius: 10px;
+    padding: 14px 18px;
+    min-width: 180px;
+    backdrop-filter: blur(6px);
+    user-select: none;
+  }
+  #hud h1 {
+    margin: 0 0 8px 0;
+    font-size: 18px;
+    letter-spacing: 1px;
+    color: #7cf7ff;
+  }
+  #hud .row {
+    display: flex;
+    justify-content: space-between;
+    font-size: 14px;
+    margin: 3px 0;
+  }
+  #hud .row span:last-child {
+    color: #ffd66b;
+    font-weight: 600;
+  }
+  #help {
+    position: absolute;
+    top: 16px;
+    right: 16px;
+    background: rgba(10, 14, 25, 0.72);
+    border: 1px solid #2a3350;
+    border-radius: 10px;
+    padding: 14px 18px;
+    font-size: 13px;
+    line-height: 1.55;
+    max-width: 260px;
+    backdrop-filter: blur(6px);
+    user-select: none;
+  }
+  #help h2 {
+    margin: 0 0 6px 0;
+    font-size: 15px;
+    color: #7cf7ff;
+  }
+  #help kbd {
+    background: #1b233c;
+    border: 1px solid #2e385a;
+    border-bottom-width: 2px;
+    border-radius: 4px;
+    padding: 1px 6px;
+    font-size: 12px;
+    color: #e8ecf4;
+  }
+  #overlay {
+    position: absolute;
+    inset: 0;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    background: rgba(5, 8, 16, 0.78);
+    backdrop-filter: blur(4px);
+    z-index: 10;
+  }
+  #overlay.show { display: flex; }
+  #overlay .panel {
+    background: #111831;
+    border: 1px solid #2a3350;
+    border-radius: 14px;
+    padding: 32px 40px;
+    text-align: center;
+    box-shadow: 0 20px 40px rgba(0, 0, 0, 0.5);
+  }
+  #overlay h2 { color: #ff6b6b; margin: 0 0 8px 0; font-size: 28px; }
+  #overlay p  { margin: 4px 0; color: #c8cfe4; }
+  #overlay button {
+    margin-top: 18px;
+    background: #3a6dff;
+    border: none;
+    color: white;
+    font-size: 15px;
+    padding: 10px 22px;
+    border-radius: 8px;
+    cursor: pointer;
+  }
+  #overlay button:hover { background: #5a84ff; }
+</style>
+</head>
+<body>
+<div id="game"></div>
+
+<div id="hud">
+  <h1>3D TETRIS</h1>
+  <div class="row"><span>Score</span><span id="score">0</span></div>
+  <div class="row"><span>Level</span><span id="level">1</span></div>
+  <div class="row"><span>Lines</span><span id="lines">0</span></div>
+</div>
+
+<div id="help">
+  <h2>조작법</h2>
+  이동: <kbd>←</kbd><kbd>→</kbd><kbd>↑</kbd><kbd>↓</kbd><br/>
+  X축 회전: <kbd>W</kbd> / <kbd>S</kbd><br/>
+  Y축 회전: <kbd>Q</kbd> / <kbd>E</kbd><br/>
+  Z축 회전: <kbd>A</kbd> / <kbd>D</kbd><br/>
+  한 칸 낙하: <kbd>Shift</kbd><br/>
+  즉시 낙하: <kbd>Space</kbd><br/>
+  일시 정지: <kbd>P</kbd><br/>
+  카메라: 마우스 드래그, 휠
+</div>
+
+<div id="overlay">
+  <div class="panel">
+    <h2 id="overlay-title">GAME OVER</h2>
+    <p id="overlay-sub">최종 점수</p>
+    <p style="font-size:28px;color:#ffd66b;font-weight:700" id="overlay-score">0</p>
+    <button id="restart">다시 시작</button>
+  </div>
+</div>
+
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+    "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+  }
+}
+</script>
+
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+// ---------- Game Config ----------
+const BOARD_W = 5;   // X
+const BOARD_D = 5;   // Z
+const BOARD_H = 14;  // Y (높이)
+
+const PIECES = [
+  // 각 piece: 셀 좌표 배열 (로컬 좌표, 대략 원점 근처)
+  { name: 'I',   color: 0x4ad9ff, cells: [[0,0,0],[1,0,0],[2,0,0],[3,0,0]] },
+  { name: 'O',   color: 0xffe066, cells: [[0,0,0],[1,0,0],[0,0,1],[1,0,1]] },
+  { name: 'L',   color: 0xffa94d, cells: [[0,0,0],[1,0,0],[2,0,0],[0,1,0]] },
+  { name: 'J',   color: 0x748ffc, cells: [[0,0,0],[1,0,0],[2,0,0],[2,1,0]] },
+  { name: 'T',   color: 0xb197fc, cells: [[0,0,0],[1,0,0],[2,0,0],[1,1,0]] },
+  { name: 'S',   color: 0x63e6be, cells: [[0,0,0],[1,0,0],[1,1,0],[2,1,0]] },
+  { name: 'Z',   color: 0xff8787, cells: [[1,0,0],[2,0,0],[0,1,0],[1,1,0]] },
+  // 3D 전용 조각
+  { name: 'TRI', color: 0xffd43b, cells: [[0,0,0],[1,0,0],[0,0,1],[0,1,0]] },
+  { name: 'BR',  color: 0x69db7c, cells: [[0,0,0],[1,0,0],[0,1,0],[1,1,1]] },
+];
+
+// ---------- Scene ----------
+const container = document.getElementById('game');
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x0b0f1a);
+scene.fog = new THREE.Fog(0x0b0f1a, 25, 60);
+
+const camera = new THREE.PerspectiveCamera(
+  50, window.innerWidth / window.innerHeight, 0.1, 500
+);
+camera.position.set(BOARD_W * 1.6, BOARD_H * 0.9, BOARD_D * 2.2);
+
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setPixelRatio(window.devicePixelRatio);
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+container.appendChild(renderer.domElement);
+
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.target.set(BOARD_W / 2 - 0.5, BOARD_H / 2 - 0.5, BOARD_D / 2 - 0.5);
+controls.enableDamping = true;
+controls.dampingFactor = 0.08;
+controls.minDistance = 8;
+controls.maxDistance = 50;
+
+// Lights
+const ambient = new THREE.AmbientLight(0xffffff, 0.4);
+scene.add(ambient);
+const dir = new THREE.DirectionalLight(0xffffff, 0.8);
+dir.position.set(10, 20, 10);
+dir.castShadow = true;
+dir.shadow.mapSize.set(1024, 1024);
+dir.shadow.camera.near = 1;
+dir.shadow.camera.far = 60;
+dir.shadow.camera.left = -20;
+dir.shadow.camera.right = 20;
+dir.shadow.camera.top = 20;
+dir.shadow.camera.bottom = -20;
+scene.add(dir);
+
+const rim = new THREE.DirectionalLight(0x7cf7ff, 0.25);
+rim.position.set(-10, 5, -10);
+scene.add(rim);
+
+// ---------- Board frame ----------
+const boardGroup = new THREE.Group();
+scene.add(boardGroup);
+
+// 바닥
+const floorGeom = new THREE.PlaneGeometry(BOARD_W, BOARD_D);
+const floorMat = new THREE.MeshStandardMaterial({
+  color: 0x182040, metalness: 0.1, roughness: 0.8,
+});
+const floor = new THREE.Mesh(floorGeom, floorMat);
+floor.rotation.x = -Math.PI / 2;
+floor.position.set(BOARD_W / 2 - 0.5, -0.5, BOARD_D / 2 - 0.5);
+floor.receiveShadow = true;
+boardGroup.add(floor);
+
+// 바닥 그리드
+const gridHelper = new THREE.GridHelper(
+  Math.max(BOARD_W, BOARD_D), Math.max(BOARD_W, BOARD_D),
+  0x3a4780, 0x2a3461
+);
+gridHelper.position.set(BOARD_W / 2 - 0.5, -0.499, BOARD_D / 2 - 0.5);
+boardGroup.add(gridHelper);
+
+// 벽 (와이어)
+function addWire(x1, y1, z1, x2, y2, z2, color = 0x3a4780) {
+  const g = new THREE.BufferGeometry().setFromPoints([
+    new THREE.Vector3(x1, y1, z1),
+    new THREE.Vector3(x2, y2, z2),
+  ]);
+  const m = new THREE.LineBasicMaterial({ color });
+  return new THREE.Line(g, m);
+}
+
+// 박스 외곽선
+{
+  const minX = -0.5, maxX = BOARD_W - 0.5;
+  const minY = -0.5, maxY = BOARD_H - 0.5;
+  const minZ = -0.5, maxZ = BOARD_D - 0.5;
+  const edges = [
+    [minX,minY,minZ,maxX,minY,minZ],[maxX,minY,minZ,maxX,minY,maxZ],
+    [maxX,minY,maxZ,minX,minY,maxZ],[minX,minY,maxZ,minX,minY,minZ],
+    [minX,maxY,minZ,maxX,maxY,minZ],[maxX,maxY,minZ,maxX,maxY,maxZ],
+    [maxX,maxY,maxZ,minX,maxY,maxZ],[minX,maxY,maxZ,minX,maxY,minZ],
+    [minX,minY,minZ,minX,maxY,minZ],[maxX,minY,minZ,maxX,maxY,minZ],
+    [maxX,minY,maxZ,maxX,maxY,maxZ],[minX,minY,maxZ,minX,maxY,maxZ],
+  ];
+  for (const e of edges) boardGroup.add(addWire(...e, 0x4c5da0));
+}
+
+// ---------- Game State ----------
+// board[y][x][z] = null | color
+function createBoard() {
+  const b = new Array(BOARD_H);
+  for (let y = 0; y < BOARD_H; y++) {
+    b[y] = new Array(BOARD_W);
+    for (let x = 0; x < BOARD_W; x++) {
+      b[y][x] = new Array(BOARD_D).fill(null);
+    }
+  }
+  return b;
+}
+
+let board = createBoard();
+let lockedMeshes = []; // {mesh, x, y, z}
+let currentPiece = null;
+let ghostPiece = null;
+let score = 0, level = 1, lines = 0;
+let dropTimer = 0;
+let dropInterval = 1.0; // seconds
+let paused = false;
+let gameOver = false;
+
+const scoreEl = document.getElementById('score');
+const levelEl = document.getElementById('level');
+const linesEl = document.getElementById('lines');
+const overlay = document.getElementById('overlay');
+const overlayTitle = document.getElementById('overlay-title');
+const overlaySub = document.getElementById('overlay-sub');
+const overlayScore = document.getElementById('overlay-score');
+const restartBtn = document.getElementById('restart');
+
+// ---------- Block Meshes ----------
+const blockGeom = new THREE.BoxGeometry(0.94, 0.94, 0.94);
+
+function makeBlock(color) {
+  const mat = new THREE.MeshStandardMaterial({
+    color, metalness: 0.25, roughness: 0.45,
+    emissive: color, emissiveIntensity: 0.12,
+  });
+  const mesh = new THREE.Mesh(blockGeom, mat);
+  mesh.castShadow = true;
+  mesh.receiveShadow = true;
+  // 모서리 강조
+  const edges = new THREE.EdgesGeometry(blockGeom);
+  const line = new THREE.LineSegments(
+    edges, new THREE.LineBasicMaterial({ color: 0x0a0e1a, transparent: true, opacity: 0.5 })
+  );
+  mesh.add(line);
+  return mesh;
+}
+
+function makeGhostBlock(color) {
+  const mat = new THREE.MeshBasicMaterial({
+    color, transparent: true, opacity: 0.18, wireframe: false,
+  });
+  const mesh = new THREE.Mesh(blockGeom, mat);
+  const edges = new THREE.EdgesGeometry(blockGeom);
+  const line = new THREE.LineSegments(
+    edges, new THREE.LineBasicMaterial({ color, transparent: true, opacity: 0.8 })
+  );
+  mesh.add(line);
+  return mesh;
+}
+
+// ---------- Piece ----------
+function spawnPiece() {
+  const def = PIECES[Math.floor(Math.random() * PIECES.length)];
+  const cells = def.cells.map(c => [...c]);
+
+  // 중앙 정렬 + 맨 위
+  const minX = Math.min(...cells.map(c => c[0]));
+  const maxX = Math.max(...cells.map(c => c[0]));
+  const minZ = Math.min(...cells.map(c => c[2]));
+  const maxZ = Math.max(...cells.map(c => c[2]));
+  const maxY = Math.max(...cells.map(c => c[1]));
+  const offX = Math.floor((BOARD_W - (maxX - minX + 1)) / 2) - minX;
+  const offZ = Math.floor((BOARD_D - (maxZ - minZ + 1)) / 2) - minZ;
+  const offY = BOARD_H - 1 - maxY;
+
+  const piece = {
+    color: def.color,
+    cells,
+    position: [offX, offY, offZ],
+    group: new THREE.Group(),
+    meshes: [],
+  };
+
+  for (const c of cells) {
+    const m = makeBlock(def.color);
+    m.position.set(c[0], c[1], c[2]);
+    piece.group.add(m);
+    piece.meshes.push(m);
+  }
+  piece.group.position.set(...piece.position);
+  scene.add(piece.group);
+
+  if (!isValid(piece, piece.position, piece.cells)) {
+    gameOver = true;
+    showOverlay('GAME OVER', '최종 점수');
+  }
+  currentPiece = piece;
+
+  ghostPiece = { meshes: [] };
+  for (let i = 0; i < cells.length; i++) {
+    const gm = makeGhostBlock(def.color);
+    scene.add(gm);
+    ghostPiece.meshes.push(gm);
+  }
+  updateGhost();
+}
+
+function getCells(piece, pos = piece.position, cells = piece.cells) {
+  return cells.map(c => [
+    c[0] + pos[0], c[1] + pos[1], c[2] + pos[2],
+  ]);
+}
+
+function isValid(piece, pos, cells) {
+  for (const [x, y, z] of getCells(piece, pos, cells)) {
+    if (x < 0 || x >= BOARD_W) return false;
+    if (z < 0 || z >= BOARD_D) return false;
+    if (y < 0) return false;
+    if (y >= BOARD_H) continue; // 상단 스폰 시 살짝 위 허용
+    if (board[y][x][z] !== null) return false;
+  }
+  return true;
+}
+
+function move(dx, dy, dz) {
+  if (!currentPiece) return false;
+  const np = [
+    currentPiece.position[0] + dx,
+    currentPiece.position[1] + dy,
+    currentPiece.position[2] + dz,
+  ];
+  if (isValid(currentPiece, np, currentPiece.cells)) {
+    currentPiece.position = np;
+    currentPiece.group.position.set(...np);
+    updateGhost();
+    return true;
+  }
+  return false;
+}
+
+function rotate(axis, dir) {
+  if (!currentPiece) return;
+  // 로컬 중심 기준 회전
+  const cells = currentPiece.cells;
+  const cx = cells.reduce((a,c)=>a+c[0],0)/cells.length;
+  const cy = cells.reduce((a,c)=>a+c[1],0)/cells.length;
+  const cz = cells.reduce((a,c)=>a+c[2],0)/cells.length;
+  const rx = Math.round(cx), ry = Math.round(cy), rz = Math.round(cz);
+
+  const rotated = cells.map(([x, y, z]) => {
+    const lx = x - rx, ly = y - ry, lz = z - rz;
+    let nx = lx, ny = ly, nz = lz;
+    if (axis === 'x') {
+      // (y, z) -> (-z, y) or reverse
+      if (dir > 0) { ny = -lz; nz = ly; }
+      else         { ny = lz;  nz = -ly; }
+    } else if (axis === 'y') {
+      if (dir > 0) { nx = -lz; nz = lx; }
+      else         { nx = lz;  nz = -lx; }
+    } else if (axis === 'z') {
+      if (dir > 0) { nx = -ly; ny = lx; }
+      else         { nx = ly;  ny = -lx; }
+    }
+    return [nx + rx, ny + ry, nz + rz];
+  });
+
+  // 정규화(음수 좌표 방지)
+  const minX = Math.min(...rotated.map(c=>c[0]));
+  const minY = Math.min(...rotated.map(c=>c[1]));
+  const minZ = Math.min(...rotated.map(c=>c[2]));
+  const shift = [
+    minX < 0 ? -minX : 0,
+    minY < 0 ? -minY : 0,
+    minZ < 0 ? -minZ : 0,
+  ];
+  // piece.position은 유지하고 cells만 바꾸되, 벽킥 시도
+  const newCells = rotated.map(c => [c[0]+shift[0], c[1]+shift[1], c[2]+shift[2]]);
+  const newPos = [
+    currentPiece.position[0] - shift[0],
+    currentPiece.position[1] - shift[1],
+    currentPiece.position[2] - shift[2],
+  ];
+
+  const kicks = [
+    [0,0,0],[1,0,0],[-1,0,0],[0,0,1],[0,0,-1],
+    [0,1,0],[2,0,0],[-2,0,0],[0,0,2],[0,0,-2],
+  ];
+  for (const k of kicks) {
+    const tryPos = [newPos[0]+k[0], newPos[1]+k[1], newPos[2]+k[2]];
+    if (isValid(currentPiece, tryPos, newCells)) {
+      currentPiece.cells = newCells;
+      currentPiece.position = tryPos;
+      // 메쉬 재배치
+      for (let i = 0; i < currentPiece.meshes.length; i++) {
+        currentPiece.meshes[i].position.set(
+          newCells[i][0], newCells[i][1], newCells[i][2]
+        );
+      }
+      currentPiece.group.position.set(...tryPos);
+      updateGhost();
+      return;
+    }
+  }
+}
+
+function updateGhost() {
+  if (!currentPiece || !ghostPiece) return;
+  let dy = 0;
+  while (isValid(currentPiece,
+    [currentPiece.position[0], currentPiece.position[1] - dy - 1, currentPiece.position[2]],
+    currentPiece.cells)) {
+    dy++;
+  }
+  for (let i = 0; i < currentPiece.cells.length; i++) {
+    const c = currentPiece.cells[i];
+    const gm = ghostPiece.meshes[i];
+    gm.position.set(
+      currentPiece.position[0] + c[0],
+      currentPiece.position[1] + c[1] - dy,
+      currentPiece.position[2] + c[2]
+    );
+  }
+}
+
+function lockPiece() {
+  const cells = getCells(currentPiece);
+  for (const [x, y, z] of cells) {
+    if (y >= BOARD_H || y < 0) continue;
+    board[y][x][z] = currentPiece.color;
+  }
+  // 기존 group 제거하고 개별 mesh로 보관
+  for (let i = 0; i < currentPiece.meshes.length; i++) {
+    const c = currentPiece.cells[i];
+    const world = [
+      currentPiece.position[0] + c[0],
+      currentPiece.position[1] + c[1],
+      currentPiece.position[2] + c[2],
+    ];
+    if (world[1] >= BOARD_H) continue;
+    const mesh = currentPiece.meshes[i];
+    currentPiece.group.remove(mesh);
+    mesh.position.set(...world);
+    scene.add(mesh);
+    lockedMeshes.push({ mesh, x: world[0], y: world[1], z: world[2] });
+  }
+  scene.remove(currentPiece.group);
+  for (const gm of ghostPiece.meshes) scene.remove(gm);
+  currentPiece = null;
+  ghostPiece = null;
+
+  clearLayers();
+  if (!gameOver) spawnPiece();
+}
+
+function clearLayers() {
+  let cleared = 0;
+  for (let y = BOARD_H - 1; y >= 0; y--) {
+    let full = true;
+    for (let x = 0; x < BOARD_W && full; x++) {
+      for (let z = 0; z < BOARD_D && full; z++) {
+        if (board[y][x][z] === null) full = false;
+      }
+    }
+    if (full) {
+      // 해당 층의 메쉬 제거
+      const survivors = [];
+      for (const b of lockedMeshes) {
+        if (b.y === y) {
+          scene.remove(b.mesh);
+          b.mesh.geometry.dispose?.();
+        } else {
+          survivors.push(b);
+        }
+      }
+      lockedMeshes = survivors;
+      // 위쪽 층을 아래로 이동
+      for (let yy = y; yy < BOARD_H - 1; yy++) {
+        for (let x = 0; x < BOARD_W; x++) {
+          for (let z = 0; z < BOARD_D; z++) {
+            board[yy][x][z] = board[yy + 1][x][z];
+          }
+        }
+      }
+      for (let x = 0; x < BOARD_W; x++) {
+        for (let z = 0; z < BOARD_D; z++) {
+          board[BOARD_H - 1][x][z] = null;
+        }
+      }
+      for (const b of lockedMeshes) {
+        if (b.y > y) {
+          b.y -= 1;
+          b.mesh.position.y = b.y;
+        }
+      }
+      cleared++;
+      y++; // 같은 y 다시 검사
+    }
+  }
+  if (cleared > 0) {
+    const points = [0, 100, 300, 600, 1000][Math.min(cleared, 4)] * level;
+    score += points;
+    lines += cleared;
+    const newLevel = Math.floor(lines / 5) + 1;
+    if (newLevel !== level) {
+      level = newLevel;
+      dropInterval = Math.max(0.12, 1.0 * Math.pow(0.85, level - 1));
+    }
+    updateHUD();
+  }
+}
+
+function hardDrop() {
+  let dy = 0;
+  while (move(0, -1, 0)) dy++;
+  score += dy * 2;
+  updateHUD();
+  lockPiece();
+}
+
+function updateHUD() {
+  scoreEl.textContent = score;
+  levelEl.textContent = level;
+  linesEl.textContent = lines;
+}
+
+function showOverlay(title, sub) {
+  overlayTitle.textContent = title;
+  overlaySub.textContent = sub;
+  overlayScore.textContent = score;
+  overlay.classList.add('show');
+}
+
+function hideOverlay() {
+  overlay.classList.remove('show');
+}
+
+function resetGame() {
+  // 기존 락된 메쉬 제거
+  for (const b of lockedMeshes) scene.remove(b.mesh);
+  lockedMeshes = [];
+  if (currentPiece) {
+    scene.remove(currentPiece.group);
+    currentPiece = null;
+  }
+  if (ghostPiece) {
+    for (const gm of ghostPiece.meshes) scene.remove(gm);
+    ghostPiece = null;
+  }
+  board = createBoard();
+  score = 0; level = 1; lines = 0;
+  dropInterval = 1.0;
+  dropTimer = 0;
+  gameOver = false;
+  paused = false;
+  updateHUD();
+  hideOverlay();
+  spawnPiece();
+}
+
+restartBtn.addEventListener('click', resetGame);
+
+// ---------- Input ----------
+window.addEventListener('keydown', (e) => {
+  if (gameOver) return;
+  if (e.key.toLowerCase() === 'p') {
+    paused = !paused;
+    if (paused) showOverlay('PAUSED', '현재 점수');
+    else hideOverlay();
+    return;
+  }
+  if (paused) return;
+  switch (e.key) {
+    case 'ArrowLeft':  move(-1, 0, 0); e.preventDefault(); break;
+    case 'ArrowRight': move( 1, 0, 0); e.preventDefault(); break;
+    case 'ArrowUp':    move( 0, 0,-1); e.preventDefault(); break;
+    case 'ArrowDown':  move( 0, 0, 1); e.preventDefault(); break;
+    case 'Shift':      move( 0,-1, 0); break;
+    case ' ':          hardDrop(); e.preventDefault(); break;
+    case 'w': case 'W': rotate('x',  1); break;
+    case 's': case 'S': rotate('x', -1); break;
+    case 'q': case 'Q': rotate('y',  1); break;
+    case 'e': case 'E': rotate('y', -1); break;
+    case 'a': case 'A': rotate('z',  1); break;
+    case 'd': case 'D': rotate('z', -1); break;
+  }
+});
+
+window.addEventListener('resize', () => {
+  camera.aspect = window.innerWidth / window.innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(window.innerWidth, window.innerHeight);
+});
+
+// ---------- Main Loop ----------
+const clock = new THREE.Clock();
+
+function animate() {
+  requestAnimationFrame(animate);
+  const dt = clock.getDelta();
+  if (!paused && !gameOver && currentPiece) {
+    dropTimer += dt;
+    if (dropTimer >= dropInterval) {
+      dropTimer = 0;
+      if (!move(0, -1, 0)) {
+        lockPiece();
+      }
+    }
+  }
+  controls.update();
+  renderer.render(scene, camera);
+}
+
+updateHUD();
+spawnPiece();
+animate();
+</script>
+</body>
+</html>
